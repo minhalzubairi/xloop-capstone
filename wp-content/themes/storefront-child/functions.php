@@ -16,4 +16,4 @@ add_filter( 'locale_stylesheet_uri', 'chld_thm_cfg_locale_css' );
 
 // END ENQUEUE PARENT ACTION
 
-require get_template_directory() . '/public/api/auth.php';
+require get_stylesheet_directory() . '/public/api/auth.php';
