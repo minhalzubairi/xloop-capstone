@@ -1,5 +1,7 @@
 wp-content/uploads/
 wp-content/cache/
 wp-content/upgrade/
+wp-content/plugins/
+
 wp-config.php
 wp-content/themes/twentytwenty*
