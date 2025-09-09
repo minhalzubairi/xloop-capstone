@@ -50,6 +50,39 @@ function store_api_register(WP_REST_Request $request) {
     $user = new WP_User($user_id);
     $user->set_role('customer');
     $app_pass = WP_Application_Passwords::create_new_application_password($user_id, ['name' => 'mobile-app']);
+
+    // Prepare data for prediction API
+    $age = 20; // default
+    if ($dob) {
+        $birthDate = new DateTime($dob);
+        $today = new DateTime('today');
+        $age = $birthDate->diff($today)->y;
+    }
+    $annual_income = $body['annual_income'] ?? '50'; // default 50
+    $spending_score = $body['spending_score'] ?? '81'; // default 81
+    $predict_data = [
+        'Age' => $age,
+        'Annual Income (k$)' => (string)$annual_income,
+        'Genre' => $gender ?: 'Male',
+        'Spending Score (1-100)' => (string)$spending_score
+    ];
+    $predict_response = wp_remote_post('http://127.0.0.1:5000/predict', [
+        'headers' => ['Content-Type' => 'application/json'],
+        'body' => json_encode($predict_data),
+        'timeout' => 5
+    ]);
+    $prediction = null;
+    if (!is_wp_error($predict_response)) {
+        $body_pred = wp_remote_retrieve_body($predict_response);
+        $json_pred = json_decode($body_pred, true);
+        if (isset($json_pred['predicted_segment'])) {
+            $prediction = $json_pred['predicted_segment'];
+            if (is_array($prediction) && count($prediction) > 0) {
+                update_user_meta($user_id, 'customer-type', $prediction[0]);
+                error_log('Predicted customer-type for user ' . $user_id . ': ' . $prediction[0]);
+            }
+        }
+    }
     return [
         'success' => true,
         'user' => [
@@ -61,7 +94,8 @@ function store_api_register(WP_REST_Request $request) {
             'gender' => $gender,
             'dob' => $dob,
         ],
-        'token' => $app_pass[0], 
+        'token' => $app_pass[0],
+        'prediction' => $prediction
     ];
 }
 
