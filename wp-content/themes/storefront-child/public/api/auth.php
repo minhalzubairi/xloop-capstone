@@ -58,15 +58,16 @@ function store_api_register(WP_REST_Request $request) {
         $today = new DateTime('today');
         $age = $birthDate->diff($today)->y;
     }
-    $annual_income = $body['annual_income'] ?? '50'; // default 50
-    $spending_score = $body['spending_score'] ?? '81'; // default 81
+    $annual_income = $body['annual_income'] ?? '50'; 
+    $spending_score = $body['spending_score'] ?? '81'; 
+
     $predict_data = [
-        'Age' => $age,
-        'Annual Income (k$)' => (string)$annual_income,
-        'Genre' => $gender ?: 'Male',
-        'Spending Score (1-100)' => (string)$spending_score
+        [
+            "Income"     => (float)$annual_income,
+            "TotalSpend" => (float)$spending_score
+        ]
     ];
-    $predict_response = wp_remote_post('http://127.0.0.1:5000/predict', [
+    $predict_response = wp_remote_post('http://127.0.0.1:5000/customer-segment', [
         'headers' => ['Content-Type' => 'application/json'],
         'body' => json_encode($predict_data),
         'timeout' => 5
@@ -75,12 +76,11 @@ function store_api_register(WP_REST_Request $request) {
     if (!is_wp_error($predict_response)) {
         $body_pred = wp_remote_retrieve_body($predict_response);
         $json_pred = json_decode($body_pred, true);
-        if (isset($json_pred['predicted_segment'])) {
-            $prediction = $json_pred['predicted_segment'];
-            if (is_array($prediction) && count($prediction) > 0) {
-                update_user_meta($user_id, 'customer-type', $prediction[0]);
-                error_log('Predicted customer-type for user ' . $user_id . ': ' . $prediction[0]);
-            }
+
+        if (is_array($json_pred) && isset($json_pred[0]['Segment'])) {
+            $prediction = $json_pred[0]['Segment'];
+            update_user_meta($user_id, 'customer-type', $prediction);
+            error_log('Predicted customer-type for user ' . $user_id . ': ' . $prediction);
         }
     }
     return [
