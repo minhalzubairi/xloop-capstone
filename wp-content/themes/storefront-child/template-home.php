@@ -89,7 +89,8 @@ get_header();
     </div>
   </section>
   
-<?php echo do_shortcode('[recommended_products]'); ?>
+<?php echo do_shortcode('[recommended_from_last_order]'); ?>
+
   <!-- Testimonials (static for now) -->
   <section class="container mb-5">
     <h2 class="h3 fw-semibold text-center mb-4">What Our Customers Say</h2>

@@ -19,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log'], $_POST['pwd'])
     if (is_wp_error($user)) {
         $error = $user->get_error_message();
     } else {
-        wp_redirect(home_url('/')); // redirect after login
+        wp_redirect(home_url('/')); 
         exit;
     }
 }

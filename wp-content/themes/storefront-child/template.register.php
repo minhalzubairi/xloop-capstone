@@ -5,7 +5,7 @@
 get_header();
 ?>
 
-<div class="min-vh-100 d-flex align-items-center justify-content-center bg-light w-100">
+<div class="min-vh-100 d-flex align-items-center justify-content-center bg-light w-100 py-4">
   <div class="card shadow-sm border-0 rounded-4 p-4" style="max-width: 500px; width:100%;">
     <div class="text-center mb-4">
       <h2 class="fw-bold">Create your account</h2>
@@ -13,12 +13,12 @@ get_header();
     </div>
 
     <form id="custom-register-form" class="w-100">
-      <div class="mb-3">
+      <div class="mb-3 w-50 float-start pe-2">
         <label class="form-label fw-medium">First Name</label>
         <input type="text" name="first_name" class="form-control bg-light" required>
       </div>
 
-      <div class="mb-3">
+      <div class="mb-3 w-50 float-end ps-2">
         <label class="form-label fw-medium">Last Name</label>
         <input type="text" name="last_name" class="form-control bg-light">
       </div>
@@ -35,9 +35,12 @@ get_header();
 
       <div class="mb-3">
         <label class="form-label fw-medium">Gender</label>
-        <div class="d-flex gap-2">
-          <button type="button" class="btn btn-outline-primary flex-fill" onclick="document.getElementById('gender').value='Male'">♂ Male</button>
-          <button type="button" class="btn btn-outline-primary flex-fill" onclick="document.getElementById('gender').value='Female'">♀ Female</button>
+        <div class="btn-group w-100" role="group">
+          <input type="radio" class="btn-check" name="gender" id="male" value="Male" required>
+          <label class="btn btn-outline-primary flex-fill" for="male">♂ Male</label>
+
+          <input type="radio" class="btn-check" name="gender" id="female" value="Female">
+          <label class="btn btn-outline-primary flex-fill" for="female">♀ Female</label>
         </div>
         <input type="hidden" name="gender" id="gender" required>
       </div>
@@ -51,7 +54,7 @@ get_header();
         Sign Up
       </button>
 
-      <div id="register-response" class="mt-3"></div>
+      <div style="display: none;" id="register-response" class="mt-3"></div>
     </form>
   </div>
 </div>

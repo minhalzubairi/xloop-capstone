@@ -47,8 +47,21 @@ ul#menu-main-menu {
     background: #2c7333;
 }
 
+.navbar-expand-lg .navbar-collapse {
+    visibility: visible !important;
+}
+
+.products.columns-4 {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+section.related.products ul.products.columns-3 {
+    display: flex;
+}
+
 @media (min-width: 1366px) {
-    .storefront-breadcrumb .col-full, .entry-content {
+    .storefront-breadcrumb .col-full, .entry-content, .content-area #main {
         max-width: 1320px;
         margin: auto;
         padding: 0 1.5rem;
