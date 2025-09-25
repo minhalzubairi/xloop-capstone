@@ -853,9 +853,7 @@ function render_customer_segmentation_page() {
 }
 
 
-#segmentation form
-
-// Shortcode to show the "Get Personalized Recommendations" form
+// Shortcode
 add_shortcode('personalized_recommendations_form', function() {
     if (!is_user_logged_in()) return 'Please login to get personalized recommendations.';
 
@@ -863,204 +861,180 @@ add_shortcode('personalized_recommendations_form', function() {
     $existing_segment = get_user_meta($user_id, 'customer_type', true);
     if ($existing_segment) return '<p>Your personalized recommendations have already been generated.</p>';
 
+    // Prefill meta
+    $education = get_user_meta($user_id, 'Education', true) ?: '';
+    $marital   = get_user_meta($user_id, 'Marital_Status', true) ?: '';
+    $has_child = get_user_meta($user_id, 'Has_Children', true) ?: 0;
+    $age       = get_user_meta($user_id, 'Age', true) ?: '';
     ob_start(); ?>
-    
-    <button id="open-recommendation-popup" class="popup-btn">Get Personalized Recommendations</button>
-
     <div id="recommendation-popup" class="popup-modal">
         <div class="popup-content">
             <span class="close-popup">&times;</span>
             <h2>Get Personalized Recommendations</h2>
 
             <form id="multi-step-form" method="post">
-                <input type="hidden" name="action" value="generate_recommendation">
-                <?php wp_nonce_field('generate_recommendation'); ?>
+                <?php wp_nonce_field('generate_recommendation', '_wpnonce_generate_recommendation'); ?>
 
                 <!-- Step 1 -->
                 <div class="step step-1 active">
-                    <p>Welcome! Let's get to know you better.</p>
-                    <p>Your Age: <span id="user-age"></span></p>
+                    <label>Age: <input type="number" name="Age" value="<?php echo esc_attr($age); ?>" required></label>
+                    <label>Education:
+                        <select name="Education" required>
+                            <option value="">Select</option>
+                            <option value="High School" <?php selected($education,'High School'); ?>>High School</option>
+                            <option value="Bachelor" <?php selected($education,'Bachelor'); ?>>Bachelor</option>
+                            <option value="Master" <?php selected($education,'Master'); ?>>Master</option>
+                            <option value="PhD" <?php selected($education,'PhD'); ?>>PhD</option>
+                        </select>
+                    </label>
+                    <label>Marital Status:
+                        <select name="Marital_Status" required>
+                            <option value="">Select</option>
+                            <option value="Single" <?php selected($marital,'Single'); ?>>Single</option>
+                            <option value="Married" <?php selected($marital,'Married'); ?>>Married</option>
+                        </select>
+                    </label>
+                    <label>Do you have children?
+                        <select name="Has_Children" required>
+                            <option value="0" <?php selected($has_child,0); ?>>No</option>
+                            <option value="1" <?php selected($has_child,1); ?>>Yes</option>
+                        </select>
+                    </label>
                     <button type="button" class="next-btn">Next</button>
                 </div>
 
                 <!-- Step 2 -->
                 <div class="step step-2">
-                    <label>Education:
-                        <select name="Education">
-                            <option value="">Select</option>
-                            <option value="High School">High School</option>
-                            <option value="Bachelor">Bachelor</option>
-                            <option value="Master">Master</option>
-                            <option value="PhD">PhD</option>
-                        </select>
-                    </label>
-                    <label>Marital Status:
-                        <select name="Marital_Status">
-                            <option value="">Select</option>
-                            <option value="Single">Single</option>
-                            <option value="Married">Married</option>
-                        </select>
-                    </label>
-                    <label>Do you have children?
-                        <select name="Has_Children">
-                            <option value="0">No</option>
-                            <option value="1">Yes</option>
-                        </select>
-                    </label>
+                    <p>Click submit to generate your personalized recommendations.</p>
                     <button type="button" class="prev-btn">Previous</button>
-                    <button type="button" class="next-btn">Next</button>
-                </div>
-
-                <!-- Step 3 -->
-                <div class="step step-3">
-                    <label>Monthly Spending ($):
-                        <input type="number" name="Spending" value="1200">
-                    </label>
-                    <label>Purchases per year:
-                        <input type="number" name="Purchases" value="35">
-                    </label>
-                    <label>Recency (months):
-                        <input type="number" name="Recency" value="12">
-                    </label>
-                    <label>Response (0/1):
-                        <input type="number" name="Response" value="1" min="0" max="1">
-                    </label>
-                    <button type="button" class="prev-btn">Previous</button>
-                    <button type="submit">Submit</button>
+                    <button type="button" id="submit-form">Submit</button>
                 </div>
             </form>
+            <div id="recommendation-success" style="display:none; color:green; margin-top:15px;">Segment saved successfully!</div>
         </div>
     </div>
 
     <style>
-        .popup-modal { display:none; position:fixed; z-index:999; left:0; top:0; width:100%; height:100%; overflow:auto; background:rgba(0,0,0,0.6); font-family:sans-serif; }
-        .popup-content { background:#fff; margin:5% auto; padding:30px; border-radius:12px; width:90%; max-width:500px; position:relative; transition: all 0.3s; }
-        .close-popup { position:absolute; top:10px; right:15px; font-size:28px; cursor:pointer; }
-        .popup-btn { padding:12px 25px; font-size:16px; cursor:pointer; border:none; border-radius:6px; background:#0073aa; color:#fff; }
-        .step { display:none; animation:fadeIn 0.4s; }
-        .step.active { display:block; }
-        button.next-btn, button.prev-btn, button[type="submit"] { padding:8px 18px; margin:10px 5px; border:none; border-radius:5px; background:#0073aa; color:#fff; cursor:pointer; }
-        button.prev-btn { background:#555; }
-        @keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
-        label { display:block; margin:10px 0; }
-        input, select { width:100%; padding:8px; margin-top:5px; border:1px solid #ccc; border-radius:4px; }
+    .popup-modal { display:block; position:fixed; z-index:999; left:0; top:0; width:100%; height:100%; overflow:auto; background:rgba(0,0,0,0.6); font-family:sans-serif; }
+    .popup-content { background:#fff; margin:5% auto; padding:30px; border-radius:12px; width:90%; max-width:500px; position:relative; }
+    .close-popup { position:absolute; top:10px; right:15px; font-size:28px; cursor:pointer; }
+    .step { display:none; animation:fadeIn 0.4s; }
+    .step.active { display:block; }
+    button.next-btn, button.prev-btn, button[type="button"] { padding:8px 18px; margin:10px 5px; border:none; border-radius:5px; background:#0073aa; color:#fff; cursor:pointer; }
+    button.prev-btn { background:#555; }
+    label { display:block; margin:10px 0; }
+    input, select { width:100%; padding:8px; margin-top:5px; border:1px solid #ccc; border-radius:4px; }
     </style>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const modal = document.getElementById('recommendation-popup');
-            const btn = document.getElementById('open-recommendation-popup');
-            const close = document.querySelector('.close-popup');
+    document.addEventListener('DOMContentLoaded', function() {
+        const modal = document.getElementById('recommendation-popup');
+        const close = document.querySelector('.close-popup');
+        close.addEventListener('click', () => modal.style.display='none');
+        window.addEventListener('click', e => { if(e.target===modal) modal.style.display='none'; });
 
-            btn.addEventListener('click', () => {
-                modal.style.display = 'block';
+        // Multi-step
+        const steps = document.querySelectorAll('.step');
+        const nextBtns = document.querySelectorAll('.next-btn');
+        const prevBtns = document.querySelectorAll('.prev-btn');
+        let currentStep = 0;
+        nextBtns.forEach(btn=>btn.addEventListener('click', ()=>{ steps[currentStep].classList.remove('active'); currentStep++; steps[currentStep].classList.add('active'); }));
+        prevBtns.forEach(btn=>btn.addEventListener('click', ()=>{ steps[currentStep].classList.remove('active'); currentStep--; steps[currentStep].classList.add('active'); }));
 
-                // Set user age from dob
-                const dob = '<?php echo get_user_meta($user_id, 'dob', true); ?>';
-                let age = 20;
-                if(dob) {
-                    const birth = new Date(dob);
-                    const today = new Date();
-                    age = today.getFullYear() - birth.getFullYear();
-                    if(today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--;
+        // AJAX submit
+        document.getElementById('submit-form').addEventListener('click', function() {
+            const form = document.getElementById('multi-step-form');
+            const formData = new FormData(form);
+            formData.append('action','generate_recommendation_ajax');
+
+            fetch('<?php echo admin_url("admin-ajax.php"); ?>', {
+                method:'POST',
+                credentials:'same-origin',
+                body: formData
+            })
+            .then(res=>res.json())
+            .then(data=>{
+                if(data.success){
+                    document.getElementById('recommendation-success').style.display='block';
+                    setTimeout(()=>modal.style.display='none',2000);
+                }else{
+                    alert('Error saving segment.');
                 }
-                document.getElementById('user-age').innerText = age;
             });
-            close.addEventListener('click', () => modal.style.display = 'none');
-            window.addEventListener('click', (e) => { if(e.target === modal) modal.style.display='none'; });
-
-            // Multi-step logic
-            const steps = document.querySelectorAll('.step');
-            const nextBtns = document.querySelectorAll('.next-btn');
-            const prevBtns = document.querySelectorAll('.prev-btn');
-            let currentStep = 0;
-
-            nextBtns.forEach(btn => btn.addEventListener('click', () => {
-                steps[currentStep].classList.remove('active');
-                currentStep++;
-                steps[currentStep].classList.add('active');
-            }));
-
-            prevBtns.forEach(btn => btn.addEventListener('click', () => {
-                steps[currentStep].classList.remove('active');
-                currentStep--;
-                steps[currentStep].classList.add('active');
-            }));
         });
+    });
     </script>
     <?php
     return ob_get_clean();
 });
 
-// Handle form submission
-add_action('admin_post_nopriv_generate_recommendation', 'handle_recommendation_form');
-add_action('admin_post_generate_recommendation', 'handle_recommendation_form');
-
-function handle_recommendation_form() {
-    if (!is_user_logged_in() || !check_admin_referer('generate_recommendation')) {
-        wp_die('Unauthorized');
+// AJAX handler
+// AJAX handler
+add_action('wp_ajax_generate_recommendation_ajax','handle_recommendation_ajax');
+    function handle_recommendation_ajax(){
+    if(!is_user_logged_in() || !check_admin_referer('generate_recommendation','_wpnonce_generate_recommendation')){
+        wp_send_json(['success'=>false]);
     }
 
     $user_id = get_current_user_id();
-
-    // If segment already exists, stop
-    if (get_user_meta($user_id, 'customer_type', true)) {
-        wp_redirect(wp_get_referer());
-        exit;
+    if(get_user_meta($user_id,'customer_type',true)){
+        wp_send_json(['success'=>true]);
     }
 
-    // Collect user meta for API
-    $dob        = get_user_meta($user_id, 'dob', true);
-    $education  = get_user_meta($user_id, 'Education', true);
-    $marital    = get_user_meta($user_id, 'Marital_Status', true);
-    $income     = get_user_meta($user_id, 'Income', true);
-    $has_child  = get_user_meta($user_id, 'Has_Children', true);
-    $purchases  = get_user_meta($user_id, 'Purchases', true);
-    $spending   = get_user_meta($user_id, 'Spending', true);
-    $recency    = get_user_meta($user_id, 'Recency', true);
-    $response   = get_user_meta($user_id, 'Response', true);
+    $age       = intval($_POST['Age'] ?? 20);
+    $education = sanitize_text_field($_POST['Education'] ?? '');
+    $marital   = sanitize_text_field($_POST['Marital_Status'] ?? '');
+    $has_child = intval($_POST['Has_Children'] ?? 0);
 
-    // Calculate age from dob
-    $age = 20;
-    if ($dob) {
-        $birthDate = new DateTime($dob);
-        $today = new DateTime('today');
-        $age = $birthDate->diff($today)->y;
-    }
-
-    $features = [
-        [
-            "AgeGroup"         => $age,
-            "Education_Encoded"=> $education,
-            "Marital_Status"   => $marital,
-            "Income"           => (float)$income ?: 72000,
-            "Has_Children"     => (int)$has_child ?: 0,
-            "Purchases"        => (int)$purchases ?: 35,
-            "Spending"         => (float)$spending ?: 1200,
-            "Recency"          => (int)$recency ?: 12,
-            "Response"         => (int)$response ?: 1,
-        ]
+    $education_map = [
+        'High School' => 0,
+        'Bachelor'    => 1,
+        'Master'      => 2,
+        'PhD'         => 3,
     ];
+    $education_encoded = $education_map[$education] ?? 0;
 
-    // Call segmentation API
-    $response = wp_remote_post('http://127.0.0.1:5000//sentiment', [
-        'headers' => ['Content-Type' => 'application/json'],
-        'body'    => json_encode($features),
-        'timeout' => 5
+    // Map marital status to numeric if needed
+    $marital_map = [
+        'Single'  => 0,
+        'Married' => 1
+    ];
+    $marital_encoded = $marital_map[$marital] ?? 0;
+
+    // Default/fallback values for other features
+    $income    = get_user_meta($user_id,'Income',true) ?: 72000;
+    $purchases = get_user_meta($user_id,'Purchases',true) ?: 35;
+    $spending  = get_user_meta($user_id,'Spending',true) ?: 1200;
+    $recency   = get_user_meta($user_id,'Recency',true) ?: 12;
+    $response  = get_user_meta($user_id,'Response',true) ?: 1;
+
+    $features = [[
+        "AgeGroup" => $age,
+        "Education_Encoded" => $education_encoded,
+        "Marital_Status" => $marital_encoded,
+        "Income" => floatval($income),
+        "Has_Children" => $has_child,
+        "Purchases" => intval($purchases),
+        "Spending" => floatval($spending),
+        "Recency" => intval($recency),
+        "Response" => intval($response)
+    ]];
+
+    $res = wp_remote_post('http://127.0.0.1:5000/predict-segment',[
+        'headers'=>['Content-Type'=>'application/json'],
+        'body'=>wp_json_encode($features),
+        'timeout'=>5
     ]);
 
-    if (!is_wp_error($response)) {
-        $body = wp_remote_retrieve_body($response);
-        $json = json_decode($body, true);
-        if (isset($json[0]['Predicted_Segment'])) {
-            $segment = $json[0]['Predicted_Segment'];
-            update_user_meta($user_id, 'customer_type', $segment);
-            wp_redirect(add_query_arg('success', '1', wp_get_referer()));
-            exit;
-        }
+    $segment = null;
+    if(!is_wp_error($res)){
+        $body = wp_remote_retrieve_body($res);
+        $json = json_decode($body,true);
+        if(isset($json[0]['Cluster_Label'])) $segment = $json[0]['Cluster_Label'];
     }
 
-    wp_redirect(add_query_arg('error', '1', wp_get_referer()));
-    exit;
+    if($segment) update_user_meta($user_id,'customer_type',$segment);
+
+    wp_send_json(['success'=>true,'segment'=>$segment]);
 }
 
