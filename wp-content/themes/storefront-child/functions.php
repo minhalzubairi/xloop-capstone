@@ -860,17 +860,134 @@ add_shortcode('personalized_recommendations_form', function() {
     if (!is_user_logged_in()) return 'Please login to get personalized recommendations.';
 
     $user_id = get_current_user_id();
-
-    // Check if the user already has a segment
     $existing_segment = get_user_meta($user_id, 'customer_type', true);
-    if ($existing_segment) return 'Your personalized recommendations have already been generated.';
+    if ($existing_segment) return '<p>Your personalized recommendations have already been generated.</p>';
 
     ob_start(); ?>
-    <form id="recommendation-form" method="post">
-        <input type="hidden" name="action" value="generate_recommendation">
-        <?php wp_nonce_field('generate_recommendation'); ?>
-        <button type="submit">Get Personalized Recommendations</button>
-    </form>
+    
+    <button id="open-recommendation-popup" class="popup-btn">Get Personalized Recommendations</button>
+
+    <div id="recommendation-popup" class="popup-modal">
+        <div class="popup-content">
+            <span class="close-popup">&times;</span>
+            <h2>Get Personalized Recommendations</h2>
+
+            <form id="multi-step-form" method="post">
+                <input type="hidden" name="action" value="generate_recommendation">
+                <?php wp_nonce_field('generate_recommendation'); ?>
+
+                <!-- Step 1 -->
+                <div class="step step-1 active">
+                    <p>Welcome! Let's get to know you better.</p>
+                    <p>Your Age: <span id="user-age"></span></p>
+                    <button type="button" class="next-btn">Next</button>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="step step-2">
+                    <label>Education:
+                        <select name="Education">
+                            <option value="">Select</option>
+                            <option value="High School">High School</option>
+                            <option value="Bachelor">Bachelor</option>
+                            <option value="Master">Master</option>
+                            <option value="PhD">PhD</option>
+                        </select>
+                    </label>
+                    <label>Marital Status:
+                        <select name="Marital_Status">
+                            <option value="">Select</option>
+                            <option value="Single">Single</option>
+                            <option value="Married">Married</option>
+                        </select>
+                    </label>
+                    <label>Do you have children?
+                        <select name="Has_Children">
+                            <option value="0">No</option>
+                            <option value="1">Yes</option>
+                        </select>
+                    </label>
+                    <button type="button" class="prev-btn">Previous</button>
+                    <button type="button" class="next-btn">Next</button>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="step step-3">
+                    <label>Monthly Spending ($):
+                        <input type="number" name="Spending" value="1200">
+                    </label>
+                    <label>Purchases per year:
+                        <input type="number" name="Purchases" value="35">
+                    </label>
+                    <label>Recency (months):
+                        <input type="number" name="Recency" value="12">
+                    </label>
+                    <label>Response (0/1):
+                        <input type="number" name="Response" value="1" min="0" max="1">
+                    </label>
+                    <button type="button" class="prev-btn">Previous</button>
+                    <button type="submit">Submit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <style>
+        .popup-modal { display:none; position:fixed; z-index:999; left:0; top:0; width:100%; height:100%; overflow:auto; background:rgba(0,0,0,0.6); font-family:sans-serif; }
+        .popup-content { background:#fff; margin:5% auto; padding:30px; border-radius:12px; width:90%; max-width:500px; position:relative; transition: all 0.3s; }
+        .close-popup { position:absolute; top:10px; right:15px; font-size:28px; cursor:pointer; }
+        .popup-btn { padding:12px 25px; font-size:16px; cursor:pointer; border:none; border-radius:6px; background:#0073aa; color:#fff; }
+        .step { display:none; animation:fadeIn 0.4s; }
+        .step.active { display:block; }
+        button.next-btn, button.prev-btn, button[type="submit"] { padding:8px 18px; margin:10px 5px; border:none; border-radius:5px; background:#0073aa; color:#fff; cursor:pointer; }
+        button.prev-btn { background:#555; }
+        @keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
+        label { display:block; margin:10px 0; }
+        input, select { width:100%; padding:8px; margin-top:5px; border:1px solid #ccc; border-radius:4px; }
+    </style>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const modal = document.getElementById('recommendation-popup');
+            const btn = document.getElementById('open-recommendation-popup');
+            const close = document.querySelector('.close-popup');
+
+            btn.addEventListener('click', () => {
+                modal.style.display = 'block';
+
+                // Set user age from dob
+                const dob = '<?php echo get_user_meta($user_id, 'dob', true); ?>';
+                let age = 20;
+                if(dob) {
+                    const birth = new Date(dob);
+                    const today = new Date();
+                    age = today.getFullYear() - birth.getFullYear();
+                    if(today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--;
+                }
+                document.getElementById('user-age').innerText = age;
+            });
+            close.addEventListener('click', () => modal.style.display = 'none');
+            window.addEventListener('click', (e) => { if(e.target === modal) modal.style.display='none'; });
+
+            // Multi-step logic
+            const steps = document.querySelectorAll('.step');
+            const nextBtns = document.querySelectorAll('.next-btn');
+            const prevBtns = document.querySelectorAll('.prev-btn');
+            let currentStep = 0;
+
+            nextBtns.forEach(btn => btn.addEventListener('click', () => {
+                steps[currentStep].classList.remove('active');
+                currentStep++;
+                steps[currentStep].classList.add('active');
+            }));
+
+            prevBtns.forEach(btn => btn.addEventListener('click', () => {
+                steps[currentStep].classList.remove('active');
+                currentStep--;
+                steps[currentStep].classList.add('active');
+            }));
+        });
+    </script>
     <?php
     return ob_get_clean();
 });
@@ -926,7 +1043,7 @@ function handle_recommendation_form() {
     ];
 
     // Call segmentation API
-    $response = wp_remote_post('http://127.0.0.1:5000/predict-segment', [
+    $response = wp_remote_post('http://127.0.0.1:5000//sentiment', [
         'headers' => ['Content-Type' => 'application/json'],
         'body'    => json_encode($features),
         'timeout' => 5

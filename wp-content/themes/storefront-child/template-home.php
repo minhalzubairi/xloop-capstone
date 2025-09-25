@@ -114,7 +114,7 @@ get_header();
       <?php endforeach; ?>
     </div>
   </section>
-
+<?php echo do_shortcode('[personalized_recommendations_form]'); ?>
 </div>
 
 <?php get_footer(); ?>

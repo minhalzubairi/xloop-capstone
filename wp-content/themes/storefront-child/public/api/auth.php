@@ -1,15 +1,11 @@
 <?php
 $namespace = 'store';
 
-add_action('rest_api_init', function() use ($namespace) {
-    register_rest_route($namespace . '/v1', '/login', [
-        'methods'  => 'POST',
-        'callback' => 'store_api_login_func',
-    ]);
-
-    register_rest_route($namespace . '/v1', '/register', [
-        'methods'  => 'POST',
+add_action('rest_api_init', function() {
+    register_rest_route('store/v1', '/register', [
+        'methods' => 'POST',
         'callback' => 'store_api_register',
+        'permission_callback' => '__return_true',
     ]);
 });
 
@@ -50,10 +46,11 @@ function store_api_register(WP_REST_Request $request) {
 
     $user = new WP_User($user_id);
     $user->set_role('customer');
+
     // Auto login
-        wp_set_current_user($user_id);
-        wp_set_auth_cookie($user_id);
-        do_action('wp_login', $username, $user);
+    wp_set_current_user($user_id);
+    wp_set_auth_cookie($user_id);
+    do_action('wp_login', $username, $user);
     $app_pass = WP_Application_Passwords::create_new_application_password($user_id, ['name' => 'mobile-app']);
 
     // Calculate Age fallback
@@ -64,39 +61,18 @@ function store_api_register(WP_REST_Request $request) {
         $age = $birthDate->diff($today)->y;
     }
 
-    // Additional fallback/default fields
-    $predict_data = [
-        [
-            "Age"            => (int)($body['Age'] ?? $age),
-            "Education"      => $body['Education'] ?? null,
-            "Marital_Status" => $body['Marital_Status'] ?? null,
-            "Spending"       => (float)($body['Spending'] ?? 1200),
-            "Purchases"      => (int)($body['Purchases'] ?? 35),
-            "Complain"       => (int)($body['Complain'] ?? 0),
-            "Response"       => (int)($body['Response'] ?? 1),
-            "Recency"        => (int)($body['Recency'] ?? 12),
-            "Income"         => (float)($body['Income'] ?? 72000),
-        ]
-    ];
-
-    // Call prediction API
-    $predict_response = wp_remote_post('http://127.0.0.1:5000/predict-segment', [
-        'headers' => ['Content-Type' => 'application/json'],
-        'body'    => json_encode($predict_data),
-        'timeout' => 5
-    ]);
-
-    $prediction = null;
-    if (!is_wp_error($predict_response)) {
-        $body_pred = wp_remote_retrieve_body($predict_response);
-        $json_pred = json_decode($body_pred, true);
-
-        if (is_array($json_pred) && isset($json_pred[0]['Predicted_Segment'])) {
-            $prediction = $json_pred[0]['Predicted_Segment'];
-            update_user_meta($user_id, 'customer-type', $prediction);
-            error_log('Predicted customer-type for user ' . $user_id . ': ' . $prediction);
-        }
+    // Assign default segment locally based on simple age or spending rules
+    if ($age <= 25) {
+        $segment = 'Young Trend Seekers';
+    } elseif ($age <= 45) {
+        $segment = 'Budget-Savvy Family';
+    } elseif ($age <= 65) {
+        $segment = 'Loyal, Family-Oriented';
+    } else {
+        $segment = 'Wealthy, Family-Focused';
     }
+
+    update_user_meta($user_id, 'customer-type', $segment);
 
     return [
         'success' => true,
@@ -110,10 +86,9 @@ function store_api_register(WP_REST_Request $request) {
             'dob'        => $dob,
         ],
         'token'      => $app_pass[0],
-        'prediction' => $prediction
+        'prediction' => $segment
     ];
 }
-
 
 
 
