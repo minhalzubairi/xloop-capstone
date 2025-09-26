@@ -53,7 +53,7 @@
 			</button>
 
 			<!-- Menu -->
-			<div class="collapse navbar-collapse" id="mainNavbar">
+			<div class="navbar-collapse" id="mainNavbar">
 				<?php
 				wp_nav_menu( array(
 					'theme_location' => 'primary',
