@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log'], $_POST['pwd'])
 }
 ?>
 
-<div class="min-vh-100 d-flex align-items-center justify-content-center bg-light">
+<div class="min-vh-100 d-flex align-items-start pt-12 justify-content-center bg-light">
   <div class="card shadow-sm border-0 rounded-4" style="max-width: 420px; width:100%;">
     <div class="card-body p-4">
       <div class="text-center mb-4">
@@ -46,14 +46,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['log'], $_POST['pwd'])
         <label class="form-label">Password</label>
         <input type="password" name="pwd" class="form-control" required>
       </div>
-      <button type="submit" class="btn btn-primary w-100">Sign In</button>
+      <button type="submit" class="btn btn-green w-100">Sign In</button>
     </form>
       <div class="mt-4 text-center">
         <a href="<?php echo wp_lostpassword_url(); ?>" class="text-decoration-none fw-medium">
           Forgot password?
         </a>
         <div>
-          <a href="<?php echo wp_registration_url(); ?>" class="text-decoration-none fw-medium">
+          <a href="/xloop-capstone/register" class="text-decoration-none fw-medium">
             Don’t have an account? Sign Up
           </a>
         </div>

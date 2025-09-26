@@ -53,9 +53,8 @@ require get_stylesheet_directory() . '/public/api/auth.php';
 // }
 // add_action( 'wp_logout', 'custom_logout_redirect' );
 
-
 // ----------------------
-// 1. Apply discount if meta matches
+// 1. Apply discount if flag is active
 // ----------------------
 add_action('woocommerce_cart_calculate_fees', function($cart) {
     if (is_admin() && !defined('DOING_AJAX')) return;
@@ -63,33 +62,31 @@ add_action('woocommerce_cart_calculate_fees', function($cart) {
     $user_id = get_current_user_id();
     if (!$user_id) return;
 
-    $customer_type = get_user_meta($user_id, 'customer_type', true);
+    $discount_flag = (int) get_user_meta($user_id, 'discount_flag', true);
 
-    // Define discounts
+    // Map flags to discounts and names
     $discounts = [
-        'High Spenders - Loyal & Responsive' => 0.15,
-        'Wealthy, Family-Focused' => 0.08,
-        'Budget-Savvy Family' => 0.10,
-        'Young Trend Seekers' => 0.08,
-        'Loyal, Family-Oriented' => 0.12,
-        'Loyal Mid Lifers' => 0.12,
-        'Budget-conscious' => 0.10
+        1 => ['type' => 'Wealthy, Family-Focused',    'amount' => 0.08],
+        2 => ['type' => 'Budget-Savvy Family',        'amount' => 0.10],
+        3 => ['type' => 'Impulsive Young Responders', 'amount' => 0.08],
+        4 => ['type' => 'Affluent Loyal Adults',      'amount' => 0.15],
     ];
 
-    if (isset($discounts[$customer_type])) {
-        $discount = $cart->get_subtotal() * $discounts[$customer_type];
+    if (isset($discounts[$discount_flag])) {
+        $discount_info = $discounts[$discount_flag];
+        $discount = $cart->get_subtotal() * $discount_info['amount'];
         $cart->add_fee(__('Customer Discount', 'your-textdomain'), -$discount);
 
         wc_add_notice(sprintf(
             __('Congrats! As a %s you got %d%% off 🎉', 'your-textdomain'),
-            $customer_type,
-            $discounts[$customer_type] * 100
+            $discount_info['type'],
+            $discount_info['amount'] * 100
         ));
     }
 }, 20, 1);
 
 // ----------------------
-// 2. Show popup for specific groups
+// 2. Show popup for specific groups with static countdown
 // ----------------------
 add_action('wp_footer', function() {
     if (!is_front_page() && !is_shop()) return;
@@ -97,21 +94,35 @@ add_action('wp_footer', function() {
     if (is_user_logged_in()) {
         $user_id = get_current_user_id();
         $customer_type = get_user_meta($user_id, 'customer_type', true);
+        $discount_start = get_user_meta($user_id, 'discount_start_time', true);
 
         // Groups to show popup for
         $popup_groups = [
-            'High Spenders - Loyal & Responsive',
-            'Loyal, Family-Oriented',
-            'Loyal Mid Lifers'
+            'Affluent Loyal Adults',
+            'Wealthy, Family-Focused'
+        ];
+
+        // Discount mapping
+        $discounts = [
+            'Wealthy, Family-Focused'   => 0.08,
+            'Budget-Savvy Family'       => 0.10,
+            'Impulsive Young Responders'=> 0.08,
+            'Affluent Loyal Adults'     => 0.15
         ];
 
         if (in_array($customer_type, $popup_groups)) {
+            // If start time not set, set it now
+            if (!$discount_start) {
+                $discount_start = time();
+                update_user_meta($user_id, 'discount_start_time', $discount_start);
+            }
             ?>
             <div id="discount-popup" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; align-items:center; justify-content:center;">
                 <div style="background:#fff; padding:25px; border-radius:12px; max-width:400px; text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.2); position:relative;">
                     <button id="close-popup" style="position:absolute; top:10px; right:10px; background:none; border:none; font-size:20px; cursor:pointer;">✖</button>
                     <h2>🎉 Discount Applied!</h2>
                     <p>You’re a <strong><?php echo esc_html($customer_type); ?></strong> — enjoy <?php echo ($discounts[$customer_type]*100); ?>% off your order!</p>
+                    <p>Time left (visual only): <span id="discount-timer"></span></p>
                     <a href="<?php echo wc_get_page_permalink('shop'); ?>"
                        style="display:inline-block; margin-top:15px; padding:12px 24px; background:#0058A3; color:#fff; border-radius:8px; text-decoration:none;">
                         Continue Shopping
@@ -120,14 +131,32 @@ add_action('wp_footer', function() {
             </div>
             <script>
             document.addEventListener("DOMContentLoaded", function() {
+                const popup = document.getElementById("discount-popup");
                 if (!localStorage.getItem("premiumPopupClosed")) {
-                    document.getElementById("discount-popup").style.display = "flex";
+                    popup.style.display = "flex";
                 }
 
                 document.getElementById("close-popup").addEventListener("click", function() {
-                    document.getElementById("discount-popup").style.display = "none";
+                    popup.style.display = "none";
                     localStorage.setItem("premiumPopupClosed", "true");
                 });
+
+                // Countdown timer for visual only
+                const startTime = <?php echo $discount_start; ?> * 1000; // convert to ms
+                const endTime = startTime + 24*60*60*1000; // 24 hours
+                const timerEl = document.getElementById("discount-timer");
+
+                function updateTimer() {
+                    const now = new Date().getTime();
+                    let distance = endTime - now;
+                    if(distance < 0) distance = 0;
+                    const hours = Math.floor((distance % (1000*60*60*24)) / (1000*60*60));
+                    const minutes = Math.floor((distance % (1000*60*60)) / (1000*60));
+                    const seconds = Math.floor((distance % (1000*60)) / 1000);
+                    timerEl.textContent = hours + "h " + minutes + "m " + seconds + "s";
+                }
+                setInterval(updateTimer, 1000);
+                updateTimer();
             });
             </script>
             <?php
@@ -876,7 +905,7 @@ add_shortcode('personalized_recommendations_form', function() {
     $user_id = get_current_user_id();
     $existing_segment = get_user_meta($user_id, 'customer_type', true);
 if (!empty($existing_segment)) {
-    return '<p>Your personalized recommendations have already been generated.</p>';
+    return '<p style="display:none">Your personalized recommendations have already been generated.</p>';
 }
 
     // Prefill meta
@@ -987,7 +1016,6 @@ if (!empty($existing_segment)) {
 });
 
 // AJAX handler
-// AJAX handler
 add_action('wp_ajax_generate_recommendation_ajax', 'handle_recommendation_ajax');
 function handle_recommendation_ajax() {
     if (!is_user_logged_in() || !check_admin_referer('generate_recommendation', '_wpnonce_generate_recommendation')) {
@@ -1070,70 +1098,63 @@ function handle_recommendation_ajax() {
 #on login cluster recheck
 
 // On user login, recheck cluster
+// ----------------------
+// Map customer types to flag values
+// ----------------------
+function map_customer_type_to_flag($customer_type) {
+    $mapping = [
+        'Wealthy, Family-Focused'   => 1,
+        'Wealthy, Single / No Children' => 2,
+        'Budget-Savvy Family'       => 3,
+        'Budget-Conscious Single'   => 4,
+        'Young Trend Seekers'       => 5,
+        'Trend-Seeking Adult'       => 6,
+        'Loyal, Family-Oriented'    => 7,
+        'Loyal Adult / No Children' => 8,
+        'Other'                     => 0
+    ];
+    return $mapping[$customer_type] ?? 0; // default to 0 if not found
+}
+
+// ----------------------
+// On user login, check and update discount flag
+// ----------------------
 add_action('wp_login', function($user_login, $user) {
     $user_id = $user->ID;
 
-    // --- Only run for users who already have raw meta filled ---
-    $age = get_user_meta($user_id, 'Age', true);
-    $education = get_user_meta($user_id, 'Education_Encoded', true);
-    $marital = get_user_meta($user_id, 'Marital_Status', true);
-    $has_children = get_user_meta($user_id, 'Has_Children', true);
+    $flag = (int) get_user_meta($user_id, 'discount_flag', true);
+    $activated_at = (int) get_user_meta($user_id, 'discount_activated_at', true);
 
-    if (!$age || $education === '' || $marital === '' || $has_children === '') {
-        // User hasn't filled the form yet, skip prediction
-        error_log("User ID {$user_id} skipped login cluster prediction (form not filled).");
-        return;
+    // Expire flag if more than 5 minutes (300 seconds) passed
+    if ($activated_at && (time() - $activated_at >= 300)) {
+        update_user_meta($user_id, 'discount_flag', 0);
+        update_user_meta($user_id, 'discount_activated_at', 0);
+        $flag = 0;
     }
 
-    // --- Get behavior fields from WooCommerce ---
-    $income = (float) get_user_meta($user_id, 'Income', true) ?: 50000;
-    $behavior = get_user_behavior($user_id);
-
-    $purchases = $behavior['Purchases'];
-    $spending  = $behavior['Spending'];
-    $recency   = $behavior['Recency'];
-    $response  = $behavior['Response'];
-
-    // --- Prepare payload ---
-    $payload = [[
-        "AgeGroup"         => (int)$age,
-        "Education_Encoded"=> (int)$education,
-        "Marital_Status"   => (int)$marital,
-        "Income"           => $income,
-        "Has_Children"     => (int)$has_children,
-        "Purchases"        => $purchases,
-        "Spending"         => $spending,
-        "Recency"          => $recency,
-        "Response"         => $response
-    ]];
-
-    // --- Call prediction API ---
-    $predict_response = wp_remote_post('http://127.0.0.1:5000/predict-segment', [
-        'headers' => ['Content-Type' => 'application/json'],
-        'body'    => wp_json_encode($payload),
-        'timeout' => 5
-    ]);
-
-    $new_cluster = null;
-    if (!is_wp_error($predict_response)) {
-        $body = wp_remote_retrieve_body($predict_response);
-        $json = json_decode($body, true);
-        if (is_array($json) && isset($json[0]['Cluster_Label'])) {
-            $new_cluster = $json[0]['Cluster_Label'];
+    // If flag is 0 or doesn't exist, set it based on current customer type
+    if ($flag === 0) {
+        $customer_type = get_user_meta($user_id, 'customer_type', true);
+        $new_flag = map_customer_type_to_flag($customer_type);
+        if ($new_flag > 0) {
+            update_user_meta($user_id, 'discount_flag', $new_flag);
+            update_user_meta($user_id, 'discount_activated_at', time());
         }
     }
-
-    // --- Update cluster if changed ---
-    $current_cluster = get_user_meta($user_id, 'customer_type', true);
-    if ($new_cluster && $new_cluster !== $current_cluster) {
-        update_user_meta($user_id, 'customer_type', $new_cluster);
-        error_log("User ID {$user_id} cluster updated on login: {$current_cluster} -> {$new_cluster}");
-    } else {
-        error_log("User ID {$user_id} cluster remains on login: {$current_cluster}");
-    }
-
 }, 10, 2);
 
+// ----------------------
+// Optional: get current flag and time remaining for popup
+// ----------------------
+function get_discount_flag_info($user_id) {
+    $flag = (int) get_user_meta($user_id, 'discount_flag', true);
+    $activated_at = (int) get_user_meta($user_id, 'discount_activated_at', true);
+    $time_left = max(0, 300 - (time() - $activated_at)); // 5 minutes in seconds
+    return [
+        'flag'      => $flag,
+        'time_left' => $time_left
+    ];
+}
 
 
 // --- Function to get behavior from WooCommerce ---

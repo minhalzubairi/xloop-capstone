@@ -8,7 +8,6 @@ add_action('rest_api_init', function() {
         'permission_callback' => '__return_true',
     ]);
 });
-
 function store_api_register(WP_REST_Request $request) {
     $body = json_decode($request->get_body(), true);
 
@@ -38,7 +37,7 @@ function store_api_register(WP_REST_Request $request) {
     wp_update_user([
         'ID' => $user_id,
         'first_name' => $first_name,
-        'last_name' => $last_name,
+        'last_name'  => $last_name,
     ]);
 
     if ($gender) update_user_meta($user_id, 'gender', $gender);
@@ -53,27 +52,6 @@ function store_api_register(WP_REST_Request $request) {
     do_action('wp_login', $username, $user);
     $app_pass = WP_Application_Passwords::create_new_application_password($user_id, ['name' => 'mobile-app']);
 
-    // Calculate Age fallback
-    $age = 20; // default
-    if ($dob) {
-        $birthDate = new DateTime($dob);
-        $today = new DateTime('today');
-        $age = $birthDate->diff($today)->y;
-    }
-
-    // Assign default segment locally based on simple age or spending rules
-    if ($age <= 25) {
-        $segment = 'Young Trend Seekers';
-    } elseif ($age <= 45) {
-        $segment = 'Budget-Savvy Family';
-    } elseif ($age <= 65) {
-        $segment = 'Loyal, Family-Oriented';
-    } else {
-        $segment = 'Wealthy, Family-Focused';
-    }
-
-    update_user_meta($user_id, 'customer-type', $segment);
-
     return [
         'success' => true,
         'user' => [
@@ -85,12 +63,9 @@ function store_api_register(WP_REST_Request $request) {
             'gender'     => $gender,
             'dob'        => $dob,
         ],
-        'token'      => $app_pass[0],
-        'prediction' => $segment
+        'token' => $app_pass[0]
     ];
 }
-
-
 
 function store_api_login_func( WP_REST_Request $request ) {
     $login = $request->get_param('login');
