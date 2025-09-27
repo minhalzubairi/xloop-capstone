@@ -6,3 +6,5 @@ wp-admin/
 
 wp-config.php
 wp-content/themes/twentytwenty*
+config.bat
+node_modules
