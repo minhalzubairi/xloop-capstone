@@ -16,43 +16,6 @@ add_filter( 'locale_stylesheet_uri', 'chld_thm_cfg_locale_css' );
 
 require get_stylesheet_directory() . '/public/api/auth.php';
 
-// // Redirect wp-login.php to /login, but allow POST for login
-// function custom_login_redirect() {
-//     global $pagenow;
-
-//     // Only redirect if user is on wp-login.php via GET (not POST) and not already logged in
-//     if ( $pagenow === 'wp-login.php' && $_SERVER['REQUEST_METHOD'] === 'GET' && !is_user_logged_in() ) {
-//         wp_redirect( home_url('/login') );
-//         exit;
-//     }
-// }
-// add_action( 'init', 'custom_login_redirect' );
-
-
-// // After login redirect
-// function custom_login_redirect_after( $redirect_to, $request, $user ) {
-//     if ( isset( $user->roles ) && is_array( $user->roles ) ) {
-//         // If admin, take to dashboard
-//         if ( in_array( 'administrator', $user->roles ) ) {
-//             return admin_url();
-//         } 
-//         // Otherwise, send to homepage (or any page)
-//         else {
-//             return home_url('/');
-//         }
-//     }
-//     return $redirect_to;
-// }
-// add_filter( 'login_redirect', 'custom_login_redirect_after', 10, 3 );
-
-
-// // After logout redirect
-// function custom_logout_redirect() {
-//     wp_redirect( home_url('/login') );
-//     exit;
-// }
-// add_action( 'wp_logout', 'custom_logout_redirect' );
-
 // ----------------------
 // 1. Apply discount if flag is active
 // ----------------------
@@ -62,14 +25,26 @@ add_action('woocommerce_cart_calculate_fees', function($cart) {
     $user_id = get_current_user_id();
     if (!$user_id) return;
 
+    // --- Expire discount flag after 5 minutes ---
+    $activated_at = get_user_meta($user_id, 'discount_activated_at', true);
+    if ($activated_at && (time() - $activated_at >= 300)) { // 300 seconds = 5 minutes
+        update_user_meta($user_id, 'discount_flag', 0);
+        update_user_meta($user_id, 'discount_activated_at', 0);
+    }
+
     $discount_flag = (int) get_user_meta($user_id, 'discount_flag', true);
 
     // Map flags to discounts and names
     $discounts = [
-        1 => ['type' => 'Wealthy, Family-Focused',    'amount' => 0.08],
-        2 => ['type' => 'Budget-Savvy Family',        'amount' => 0.10],
-        3 => ['type' => 'Impulsive Young Responders', 'amount' => 0.08],
-        4 => ['type' => 'Affluent Loyal Adults',      'amount' => 0.15],
+        1 => ['type' => 'Wealthy, Family-Focused',        'amount' => 0.08],
+        2 => ['type' => 'Wealthy, Single / No Children',  'amount' => 0.08],
+        3 => ['type' => 'Budget-Savvy Family',            'amount' => 0.10],
+        4 => ['type' => 'Budget-Conscious Single',        'amount' => 0.10],
+        5 => ['type' => 'Young Trend Seekers',            'amount' => 0.08],
+        6 => ['type' => 'Trend-Seeking Adult',            'amount' => 0.08],
+        7 => ['type' => 'Loyal, Family-Oriented',         'amount' => 0.15],
+        8 => ['type' => 'Loyal Adult / No Children',      'amount' => 0.15],
+        0 => ['type' => 'Other',                           'amount' => 0.0],
     ];
 
     if (isset($discounts[$discount_flag])) {
@@ -77,13 +52,25 @@ add_action('woocommerce_cart_calculate_fees', function($cart) {
         $discount = $cart->get_subtotal() * $discount_info['amount'];
         $cart->add_fee(__('Customer Discount', 'your-textdomain'), -$discount);
 
-        wc_add_notice(sprintf(
-            __('Congrats! As a %s you got %d%% off 🎉', 'your-textdomain'),
-            $discount_info['type'],
-            $discount_info['amount'] * 100
-        ));
+        if ($discount_info['amount'] > 0) {
+            wc_add_notice(sprintf(
+                __('Congrats! As a %s you got %d%% off 🎉', 'your-textdomain'),
+                $discount_info['type'],
+                $discount_info['amount'] * 100
+            ));
+        }
     }
 }, 20, 1);
+
+add_action('woocommerce_thankyou', function($order_id) {
+    if (!$order_id) return;
+
+    $user_id = get_current_user_id();
+    if (!$user_id) return;
+
+    update_user_meta($user_id, 'discount_flag', 0);
+    update_user_meta($user_id, 'discount_activated_at', 0);
+}, 20);
 
 // ----------------------
 // 2. Show popup for specific groups with static countdown
@@ -96,22 +83,33 @@ add_action('wp_footer', function() {
         $customer_type = get_user_meta($user_id, 'customer_type', true);
         $discount_start = get_user_meta($user_id, 'discount_start_time', true);
 
-        // Groups to show popup for
+        // Show popup for all profiles
         $popup_groups = [
-            'Affluent Loyal Adults',
-            'Wealthy, Family-Focused'
+            'Wealthy, Family-Focused',
+            'Wealthy, Single / No Children',
+            'Budget-Savvy Family',
+            'Budget-Conscious Single',
+            'Young Trend Seekers',
+            'Trend-Seeking Adult',
+            'Loyal, Family-Oriented',
+            'Loyal Adult / No Children',
+            'Other'
         ];
 
         // Discount mapping
         $discounts = [
-            'Wealthy, Family-Focused'   => 0.08,
-            'Budget-Savvy Family'       => 0.10,
-            'Impulsive Young Responders'=> 0.08,
-            'Affluent Loyal Adults'     => 0.15
+            'Wealthy, Family-Focused'        => 0.08,
+            'Wealthy, Single / No Children'  => 0.08,
+            'Budget-Savvy Family'            => 0.10,
+            'Budget-Conscious Single'        => 0.10,
+            'Young Trend Seekers'            => 0.08,
+            'Trend-Seeking Adult'            => 0.08,
+            'Loyal, Family-Oriented'         => 0.15,
+            'Loyal Adult / No Children'      => 0.15,
+            'Other'                           => 0.05
         ];
 
         if (in_array($customer_type, $popup_groups)) {
-            // If start time not set, set it now
             if (!$discount_start) {
                 $discount_start = time();
                 update_user_meta($user_id, 'discount_start_time', $discount_start);
@@ -122,8 +120,8 @@ add_action('wp_footer', function() {
                     <button id="close-popup" style="position:absolute; top:10px; right:10px; background:none; border:none; font-size:20px; cursor:pointer;">✖</button>
                     <h2>🎉 Discount Applied!</h2>
                     <p>You’re a <strong><?php echo esc_html($customer_type); ?></strong> — enjoy <?php echo ($discounts[$customer_type]*100); ?>% off your order!</p>
-                    <p>Time left (visual only): <span id="discount-timer"></span></p>
-                    <a href="<?php echo wc_get_page_permalink('shop'); ?>"
+                    <p style="display:none">Time left: <span id="discount-timer"></span></p>
+                    <a class="btn-green" href="<?php echo wc_get_page_permalink('shop'); ?>"
                        style="display:inline-block; margin-top:15px; padding:12px 24px; background:#0058A3; color:#fff; border-radius:8px; text-decoration:none;">
                         Continue Shopping
                     </a>
@@ -141,9 +139,8 @@ add_action('wp_footer', function() {
                     localStorage.setItem("premiumPopupClosed", "true");
                 });
 
-                // Countdown timer for visual only
-                const startTime = <?php echo $discount_start; ?> * 1000; // convert to ms
-                const endTime = startTime + 24*60*60*1000; // 24 hours
+                const startTime = <?php echo $discount_start; ?> * 1000;
+                const endTime = startTime + 24*60*60*1000;
                 const timerEl = document.getElementById("discount-timer");
 
                 function updateTimer() {
@@ -163,8 +160,6 @@ add_action('wp_footer', function() {
         }
     }
 });
-
-
 
 // ===============================
 // Shortcode: Recommended Products (empty initially)
@@ -193,74 +188,6 @@ add_action('wp_enqueue_scripts', function() {
         }
     }
 
-});
-
-
-
-
-// add_action('wp_enqueue_scripts', function() {
-//     if (is_user_logged_in()) {
-//         $user_id = get_current_user_id();
-//         $orders = wc_get_orders([
-//             'customer' => $user_id,
-//             'status' => ['completed', 'processing'],
-//             'limit' => -1,
-//         ]);
-
-//         $purchased_items = [];
-
-//         foreach ($orders as $order) {
-//             foreach ($order->get_items() as $item) {
-//                 $purchased_items[] = $item->get_name();
-//             }
-//         }
-
-//         wp_localize_script('my-recommendations', 'recommendData', [
-//             'api_url' => 'http://127.0.0.1:5000/recommend-2',
-//             'purchased' => $purchased_items,
-//             'ajax_url' => admin_url('admin-ajax.php'),
-//         ]);
-//     }
-// });
-
-// ===============================
-// 1. Cart-based Recommendations
-// ===============================
-add_shortcode('cart_recommended_products', function() {
-    ob_start();
-    $cart_items = [];
-
-    if (WC()->cart) {
-        foreach (WC()->cart->get_cart() as $item) {
-            $cart_items[] = $item['data']->get_name();
-        }
-    }
-    ?>
-    <section class="container mb-5">
-        <h2 class="h3 fw-semibold text-center mb-4">🛒 Cart-based Recommendations</h2>
-        <div id="cart-recommendations" class="row"></div>
-    </section>
-    <script>
-    jQuery(document).ready(function($) {
-        $.ajax({
-            url: "http://127.0.0.1:5000/recommend-cart",
-            method: "POST",
-            contentType: "application/json",
-            data: JSON.stringify({cart: <?php echo json_encode($cart_items); ?>}),
-            success: function(res) {
-                if(res && res.length){
-                    let html = '';
-                    res.forEach(function(p){
-                        html += '<div class="col-md-3">'+p+'</div>';
-                    });
-                    $("#cart-recommendations").html(html);
-                }
-            }
-        });
-    });
-    </script>
-    <?php
-    return ob_get_clean();
 });
 
 
@@ -346,18 +273,24 @@ add_shortcode('recommended_from_last_order', function() {
 
                     $shown_ids[] = $product->get_id(); ?>
                     <div class="col-sm-6 col-lg-4">
-                        <div class="feature-products card h-100 shadow-xs p-3 rounded">
-                            <img src="<?php echo wp_get_attachment_image_url($product->get_image_id(), 'medium'); ?>" 
-                                 class="card-img-top" alt="<?php echo esc_attr($product->get_name()); ?>">
-                            <div class="card-body text-center p-0 d-grid">
-                                <h5 class="card-title"><?php echo esc_html($product->get_name()); ?></h5>
+                        <div class="feature-products card h-100 shadow-xs p-3 rounded text-center">
+                            <a href="<?php echo esc_url( get_permalink($product->get_id()) ); ?>">
+                                <img src="<?php echo wp_get_attachment_image_url($product->get_image_id(), 'medium'); ?>" 
+                                    class="card-img-top" alt="<?php echo esc_attr($product->get_name()); ?>">
+                            </a>
+                            <div class="card-body p-0 d-grid">
+                                <h5 class="card-title">
+                                    <a href="<?php echo esc_url( get_permalink($product->get_id()) ); ?>" class="text-decoration-none text-dark">
+                                        <?php echo esc_html($product->get_name()); ?>
+                                    </a>
+                                </h5>
                                 <p class="card-text fw-bold mb-1"><?php echo $product->get_price_html(); ?></p>
                                 <small class="text-muted mb-2"><?php echo esc_html($rec['product_name']); ?></small>
                                 <a href="<?php echo esc_url($product->add_to_cart_url()); ?>" 
-                                   data-quantity="1" 
-                                   class="align-self-end btn btn-green add_to_cart_button ajax_add_to_cart"
-                                   data-product_id="<?php echo $product->get_id(); ?>" rel="nofollow">
-                                   Add to Cart
+                                data-quantity="1" 
+                                class="align-self-end btn btn-green add_to_cart_button ajax_add_to_cart"
+                                data-product_id="<?php echo $product->get_id(); ?>" rel="nofollow">
+                                Add to Cart
                                 </a>
                             </div>
                         </div>
@@ -399,6 +332,54 @@ add_shortcode('recommended_from_last_order', function() {
     return ob_get_clean();
 });
 
+// Append first child category (not parent) of recommended products to menu
+add_filter('wp_nav_menu_items', function($items, $args) {
+    if ($args->theme_location !== 'primary' || !is_user_logged_in()) {
+        return $items;
+    }
+
+    global $wpdb;
+    $user_id = get_current_user_id();
+    $table   = $wpdb->prefix . 'user_recommendations';
+
+    $top_products = $wpdb->get_results(
+        $wpdb->prepare(
+            "SELECT product_id, COUNT(*) as cnt
+             FROM $table
+             WHERE user_id = %d
+             GROUP BY product_id
+             ORDER BY cnt DESC, MAX(created_at) DESC
+             LIMIT 3",
+            $user_id
+        )
+    );
+
+    if ($top_products) {
+        $added_terms = [];
+
+        foreach ($top_products as $rec) {
+            $product = wc_get_product($rec->product_id);
+            if (!$product) continue;
+
+            $terms = wp_get_post_terms($product->get_id(), 'product_cat', ['orderby' => 'term_id', 'order' => 'ASC']);
+            if (!empty($terms)) {
+                foreach ($terms as $term) {
+                    // Skip parent categories, take first child only
+                    if ($term->parent != 0 && !in_array($term->term_id, $added_terms)) {
+                        $link = get_term_link($term);
+                        if (!is_wp_error($link)) {
+                            $items .= '<li class="menu-item recommended-cat"><a href="' . esc_url($link) . '">' . esc_html($term->name) . '</a></li>';
+                            $added_terms[] = $term->term_id;
+                            break; // stop after first child category
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return $items;
+}, 10, 2);
 
 add_action('woocommerce_thankyou', 'tpa_hit_api_on_new_order', 10, 1);
 
@@ -560,8 +541,6 @@ function tpa_save_recommendations() {
 
     wp_send_json_success('Saved recommendations');
 }
-
-
 
 
 #Sentiment analysis
@@ -898,19 +877,17 @@ function render_customer_segmentation_page() {
 }
 
 #segment form
-//  Shortcode
+// Shortcode
 add_shortcode('personalized_recommendations_form', function() {
     if (!is_user_logged_in()) return 'Please login to get personalized recommendations.';
 
     $user_id = get_current_user_id();
     $existing_segment = get_user_meta($user_id, 'customer_type', true);
-if (!empty($existing_segment)) {
-    return '<p style="display:none">Your personalized recommendations have already been generated.</p>';
-}
+    if (!empty($existing_segment)) {
+        return '<p style="display:none">Your personalized recommendations have already been generated.</p>';
+    }
 
     // Prefill meta
-    $education = get_user_meta($user_id, 'Education', true) ?: '';
-    $marital   = get_user_meta($user_id, 'Marital_Status', true) ?: '';
     $has_child = get_user_meta($user_id, 'Has_Children', true) ?: 0;
     $age       = get_user_meta($user_id, 'Age', true) ?: '';
     ob_start(); ?>
@@ -925,22 +902,6 @@ if (!empty($existing_segment)) {
                 <!-- Step 1 -->
                 <div class="step step-1 active">
                     <label>Age: <input type="number" name="Age" value="<?php echo esc_attr($age); ?>" required></label>
-                    <label>Education:
-                        <select name="Education" required>
-                            <option value="">Select</option>
-                            <option value="High School" <?php selected($education,'High School'); ?>>High School</option>
-                            <option value="Bachelor" <?php selected($education,'Bachelor'); ?>>Bachelor</option>
-                            <option value="Master" <?php selected($education,'Master'); ?>>Master</option>
-                            <option value="PhD" <?php selected($education,'PhD'); ?>>PhD</option>
-                        </select>
-                    </label>
-                    <label>Marital Status:
-                        <select name="Marital_Status" required>
-                            <option value="">Select</option>
-                            <option value="Single" <?php selected($marital,'Single'); ?>>Single</option>
-                            <option value="Married" <?php selected($marital,'Married'); ?>>Married</option>
-                        </select>
-                    </label>
                     <label>Do you have children?
                         <select name="Has_Children" required>
                             <option value="0" <?php selected($has_child,0); ?>>No</option>
@@ -957,7 +918,7 @@ if (!empty($existing_segment)) {
                     <button type="button" id="submit-form">Submit</button>
                 </div>
             </form>
-            <div id="recommendation-success" style="display:none; color:green; margin-top:15px;">Segment saved successfully!</div>
+            <div id="recommendation-success" style="color:green; margin-top:15px;">Segment saved successfully!</div>
         </div>
     </div>
 
@@ -1017,83 +978,110 @@ if (!empty($existing_segment)) {
 
 // AJAX handler
 add_action('wp_ajax_generate_recommendation_ajax', 'handle_recommendation_ajax');
-function handle_recommendation_ajax() {
-    if (!is_user_logged_in() || !check_admin_referer('generate_recommendation', '_wpnonce_generate_recommendation')) {
-        wp_send_json(['success' => false]);
+    function handle_recommendation_ajax() {
+        if (!is_user_logged_in() || !check_admin_referer('generate_recommendation', '_wpnonce_generate_recommendation')) {
+            wp_send_json(['success' => false]);
+        }
+
+        $user_id = get_current_user_id();
+        if (get_user_meta($user_id, 'customer_type', true)) {
+            wp_send_json(['success' => true]);
+        }
+
+        // Get submitted form data
+        $age       = intval($_POST['Age'] ?? 20);
+        $education = sanitize_text_field($_POST['Education'] ?? '');
+        $marital   = sanitize_text_field($_POST['Marital_Status'] ?? '');
+        $has_child = intval($_POST['Has_Children'] ?? 0);
+
+        // Encode Education and Marital Status
+        $education_map = [
+            'High School' => 0,
+            'Bachelor'    => 1,
+            'Master'      => 2,
+            'PhD'         => 3,
+        ];
+        $education_encoded = $education_map[$education] ?? 0;
+
+        $marital_map = [
+            'Single'  => 0,
+            'Married' => 1
+        ];
+        $marital_encoded = $marital_map[$marital] ?? 0;
+
+        // Save raw inputs to user meta
+        update_user_meta($user_id, 'Age', $age);
+        update_user_meta($user_id, 'Has_Children', $has_child);
+
+        $purchases = get_user_meta($user_id, 'Purchases', true) ?: 0;
+        $spending  = get_user_meta($user_id, 'Spending', true) ?: 0;
+        $recency   = get_user_meta($user_id, 'Recency', true) ?: 0;
+        $response  = get_user_meta($user_id, 'Response', true) ?: 0;
+
+        // Ensure meta fields exist even if previously missing
+        update_user_meta($user_id, 'Purchases', $purchases);
+        update_user_meta($user_id, 'Spending', $spending);
+        update_user_meta($user_id, 'Recency', $recency);
+        update_user_meta($user_id, 'Response', $response);
+
+        // Prepare payload for API
+        $features = [
+            "AgeGroup" => $age,
+            "Has_Children" => $has_child,
+            "Purchases" => intval($purchases),
+            "Spending" => floatval($spending),
+            "Recency" => intval($recency),
+            "Response" => intval($response)
+        ];
+
+        // Call prediction API
+        $res = wp_remote_post('http://127.0.0.1:5000/predict-segment', [
+            'headers' => ['Content-Type' => 'application/json'],
+            'body'    => wp_json_encode($features),
+            'timeout' => 5
+        ]);
+
+        $segment = null;
+        if (!is_wp_error($res)) {
+            $body = wp_remote_retrieve_body($res);
+            $json = json_decode($body, true);
+            if (isset($json['Profile_Label'])) $segment = $json['Profile_Label'];
+        }
+        // Save cluster to user meta
+        if ($segment) {
+            update_user_meta($user_id, 'customer_type', $segment);
+
+            // mark as segmented
+            update_user_meta($user_id, 'customer_segment', 1);
+
+            // Discount logic
+            $discounts = [
+                1 => ['type' => 'Wealthy, Family-Focused',        'amount' => 0.08],
+                2 => ['type' => 'Wealthy, Single / No Children',  'amount' => 0.08],
+                3 => ['type' => 'Budget-Savvy Family',            'amount' => 0.10],
+                4 => ['type' => 'Budget-Conscious Single',        'amount' => 0.10],
+                5 => ['type' => 'Young Trend Seekers',            'amount' => 0.08],
+                6 => ['type' => 'Trend-Seeking Adult',            'amount' => 0.08],
+                7 => ['type' => 'Loyal, Family-Oriented',         'amount' => 0.15],
+                8 => ['type' => 'Loyal Adult / No Children',      'amount' => 0.15],
+                0 => ['type' => 'Other',                          'amount' => 0.05],
+            ];
+
+            $new_flag = 0;
+            foreach ($discounts as $key => $info) {
+                if ($info['type'] === $segment) {
+                    $new_flag = $key;
+                    break;
+                }
+            }
+
+            update_user_meta($user_id, 'discount_flag', $new_flag);
+            update_user_meta($user_id, 'discount_activated_at', time());
+        }
+
+        wp_send_json(['success' => true, 'segment' => $segment]);
     }
-
-    $user_id = get_current_user_id();
-    if (get_user_meta($user_id, 'customer_type', true)) {
-        wp_send_json(['success' => true]);
-    }
-
-    // Get submitted form data
-    $age       = intval($_POST['Age'] ?? 20);
-    $education = sanitize_text_field($_POST['Education'] ?? '');
-    $marital   = sanitize_text_field($_POST['Marital_Status'] ?? '');
-    $has_child = intval($_POST['Has_Children'] ?? 0);
-
-    // Encode Education and Marital Status
-    $education_map = [
-        'High School' => 0,
-        'Bachelor'    => 1,
-        'Master'      => 2,
-        'PhD'         => 3,
-    ];
-    $education_encoded = $education_map[$education] ?? 0;
-
-    $marital_map = [
-        'Single'  => 0,
-        'Married' => 1
-    ];
-    $marital_encoded = $marital_map[$marital] ?? 0;
-
-    // Save raw inputs to user meta
-    update_user_meta($user_id, 'Age', $age);
-    update_user_meta($user_id, 'Education_Encoded', $education_encoded);
-    update_user_meta($user_id, 'Marital_Status', $marital_encoded);
-    update_user_meta($user_id, 'Has_Children', $has_child);
-
-    // Default/fallback values for other features
-    $income    = get_user_meta($user_id, 'Income', true) ?: 72000;
-    $purchases = get_user_meta($user_id, 'Purchases', true) ?: 35;
-    $spending  = get_user_meta($user_id, 'Spending', true) ?: 1200;
-    $recency   = get_user_meta($user_id, 'Recency', true) ?: 12;
-    $response  = get_user_meta($user_id, 'Response', true) ?: 1;
-
-    // Prepare payload for API
-    $features = [[
-        "AgeGroup" => $age,
-        "Education_Encoded" => $education_encoded,
-        "Marital_Status" => $marital_encoded,
-        "Income" => floatval($income),
-        "Has_Children" => $has_child,
-        "Purchases" => intval($purchases),
-        "Spending" => floatval($spending),
-        "Recency" => intval($recency),
-        "Response" => intval($response)
-    ]];
-
-    // Call prediction API
-    $res = wp_remote_post('http://127.0.0.1:5000/predict-segment', [
-        'headers' => ['Content-Type' => 'application/json'],
-        'body'    => wp_json_encode($features),
-        'timeout' => 5
-    ]);
-
-    $segment = null;
-    if (!is_wp_error($res)) {
-        $body = wp_remote_retrieve_body($res);
-        $json = json_decode($body, true);
-        if (isset($json[0]['Cluster_Label'])) $segment = $json[0]['Cluster_Label'];
-    }
-
-    // Save cluster to user meta
-    if ($segment) update_user_meta($user_id, 'customer_type', $segment);
-
-    wp_send_json(['success' => true, 'segment' => $segment]);
-}
-
+    
 
 #on login cluster recheck
 
@@ -1121,27 +1109,84 @@ function map_customer_type_to_flag($customer_type) {
 // ----------------------
 add_action('wp_login', function($user_login, $user) {
     $user_id = $user->ID;
-
-    $flag = (int) get_user_meta($user_id, 'discount_flag', true);
+    if ((int) get_user_meta($user_id, 'customer_segment', true) !== 1) {
+        return;
+    }
+    // Get current meta
+    $current_type = get_user_meta($user_id, 'customer_type', true);
+    $flag         = (int) get_user_meta($user_id, 'discount_flag', true);
     $activated_at = (int) get_user_meta($user_id, 'discount_activated_at', true);
 
-    // Expire flag if more than 5 minutes (300 seconds) passed
-    if ($activated_at && (time() - $activated_at >= 300)) {
-        update_user_meta($user_id, 'discount_flag', 0);
-        update_user_meta($user_id, 'discount_activated_at', 0);
-        $flag = 0;
-    }
+    // Static fields
+    $age       = (int) get_user_meta($user_id, 'Age', true) ?: 20;
+    $has_child = (int) get_user_meta($user_id, 'Has_Children', true) ?: 0;
 
-    // If flag is 0 or doesn't exist, set it based on current customer type
-    if ($flag === 0) {
-        $customer_type = get_user_meta($user_id, 'customer_type', true);
-        $new_flag = map_customer_type_to_flag($customer_type);
-        if ($new_flag > 0) {
-            update_user_meta($user_id, 'discount_flag', $new_flag);
-            update_user_meta($user_id, 'discount_activated_at', time());
+    // Fresh behavior
+    $behavior = get_user_behavior($user_id);
+
+    // Update meta
+    update_user_meta($user_id, 'Purchases', $behavior['Purchases']);
+    update_user_meta($user_id, 'Spending', $behavior['Spending']);
+    update_user_meta($user_id, 'Recency', $behavior['Recency']);
+    update_user_meta($user_id, 'Response', $behavior['Response']);
+
+    // Prepare API payload
+    $features = [
+        "AgeGroup"     => $age,
+        "Has_Children" => $has_child,
+        "Purchases"    => $behavior['Purchases'],
+        "Spending"     => $behavior['Spending'],
+        "Recency"      => $behavior['Recency'],
+        "Response"     => $behavior['Response']
+    ];
+
+    // Call API
+    $res = wp_remote_post('http://127.0.0.1:5000/predict-segment', [
+        'headers' => ['Content-Type' => 'application/json'],
+        'body'    => wp_json_encode($features),
+        'timeout' => 5
+    ]);
+
+    if (!is_wp_error($res)) {
+        $body = wp_remote_retrieve_body($res);
+        $json = json_decode($body, true);
+        if (isset($json['Profile_Label'])) {
+            $new_type = $json['Profile_Label'];
+
+            // Update profile only if changed
+            if ($new_type !== $current_type) {
+                update_user_meta($user_id, 'customer_type', $new_type);
+
+                // Set discount flag if 0
+                if ($flag === 0) {
+                    $discounts = [
+                        1 => 'Wealthy, Family-Focused',
+                        2 => 'Wealthy, Single / No Children',
+                        3 => 'Budget-Savvy Family',
+                        4 => 'Budget-Conscious Single',
+                        5 => 'Young Trend Seekers',
+                        6 => 'Trend-Seeking Adult',
+                        7 => 'Loyal, Family-Oriented',
+                        8 => 'Loyal Adult / No Children',
+                        0 => 'Other',
+                    ];
+
+                    $new_flag = 0;
+                    foreach ($discounts as $key => $label) {
+                        if ($label === $new_type) {
+                            $new_flag = $key;
+                            break;
+                        }
+                    }
+
+                    update_user_meta($user_id, 'discount_flag', $new_flag);
+                    update_user_meta($user_id, 'discount_activated_at', time());
+                }
+            }
         }
     }
-}, 10, 2);
+
+}, 20, 2); // priority 20 to ensure WooCommerce classes are loaded
 
 // ----------------------
 // Optional: get current flag and time remaining for popup
@@ -1156,36 +1201,343 @@ function get_discount_flag_info($user_id) {
     ];
 }
 
-
-// --- Function to get behavior from WooCommerce ---
 function get_user_behavior($user_id) {
     if (!class_exists('WC_Order')) return [
         'Purchases'=>0, 'Spending'=>0, 'Recency'=>0, 'Response'=>0
     ];
 
-    $orders = wc_get_orders([
-        'customer' => $user_id,
-        'status'   => 'completed',
-        'limit'    => -1
+    $user = get_userdata($user_id);
+    $email = $user->user_email;
+
+    $orders_by_id = wc_get_orders([
+        'limit' => -1,
+        'status' => ['completed','processing'],
+        'customer' => $user_id
     ]);
 
-    $purchases = count($orders);
+    $orders_by_email = wc_get_orders([
+        'limit' => -1,
+        'status' => ['completed','processing'],
+        'billing_email' => $email
+    ]);
+
+    $orders = array_merge($orders_by_id, $orders_by_email);
+
+    // Remove duplicates
+    $unique_orders = [];
+    $seen = [];
+    foreach ($orders as $order) {
+        $id = $order->get_id();
+        if (!in_array($id, $seen)) {
+            $unique_orders[] = $order;
+            $seen[] = $id;
+        }
+    }
+
+    $purchases = count($unique_orders);
     $spending  = 0;
     $last_date = null;
+    $coupon_count = 0;
 
-    foreach ($orders as $order) {
+    foreach ($unique_orders as $order) {
         $spending += $order->get_total();
         $date = $order->get_date_created();
         if ($date && (!$last_date || $date > $last_date)) $last_date = $date;
+        $coupon_count += count($order->get_coupon_codes());
     }
 
     $recency = $last_date ? (new DateTime('today'))->diff($last_date)->days : 0;
-    $response = (int) get_user_meta($user_id, 'Accepted_Campaigns', true) ?: 0;
 
     return [
         'Purchases' => $purchases,
         'Spending'  => $spending,
         'Recency'   => $recency,
-        'Response'  => $response
+        'Response'  => $coupon_count
     ];
 }
+
+#Churn Trigger
+
+// -----------------------------
+// 1. Create submenu under WooCommerce
+// -----------------------------
+add_action('admin_menu', function() {
+    add_submenu_page(
+        'woocommerce',
+        'Churn Predictions',
+        'Churn',
+        'manage_options',
+        'churn-predictions',
+        function() {
+            global $wpdb;
+            $table = $wpdb->prefix . 'churn_predictions';
+            $rows  = $wpdb->get_results("SELECT * FROM $table ORDER BY created_at DESC LIMIT 50");
+
+            echo '<div class="wrap"><h1>Churn Predictions</h1>';
+            if ($rows) {
+                echo '<table class="widefat striped"><thead><tr>
+                        <th>User ID</th><th>Order ID</th><th>Prediction</th>
+                        <th>Probability</th><th>Created</th>
+                      </tr></thead><tbody>';
+                foreach ($rows as $r) {
+                    echo "<tr>
+                            <td>{$r->user_id}</td>
+                            <td>{$r->order_id}</td>
+                            <td>{$r->prediction}</td>
+                            <td>{$r->probability}</td>
+                            <td>{$r->created_at}</td>
+                          </tr>";
+                }
+                echo '</tbody></table>';
+            } else {
+                echo '<p>No churn data yet.</p>';
+            }
+            echo '</div>';
+        }
+    );
+});
+
+// -----------------------------
+// 2. Create table on theme switch (quick + dirty way)
+// -----------------------------
+add_action('after_switch_theme', function() {
+    global $wpdb;
+    $table   = $wpdb->prefix . 'churn_predictions';
+    $charset = $wpdb->get_charset_collate();
+
+    $sql = "CREATE TABLE IF NOT EXISTS $table (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        order_id BIGINT NOT NULL,
+        prediction TINYINT NOT NULL,
+        probability FLOAT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) $charset;";
+
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+});
+
+// -----------------------------
+// 3. Hook into order thank-you & call Python API
+// -----------------------------
+add_action('woocommerce_thankyou', function($order_id) {
+    $order = wc_get_order($order_id);
+    if (!$order) return;
+
+    $user_id = $order->get_user_id();
+
+    // Example features (adjust for your model inputs)
+    $features = [
+        "recency"           => 15,
+        "frequency"         => count($order->get_items()),
+        "monetary"          => (float) $order->get_total(),
+        "avg_payment_value" => (float) $order->get_total() / max(1, count($order->get_items())),
+        "avg_review_score"  => 4.0
+    ];
+
+    $response = wp_remote_post("http://127.0.0.1:5000/predict-churn", [
+        'headers' => ['Content-Type' => 'application/json'],
+        'body'    => wp_json_encode($features),
+    ]);
+
+    if (is_wp_error($response)) return;
+
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+    if (!$body || !isset($body['churn_prediction'])) return;
+
+    global $wpdb;
+    $table = $wpdb->prefix . 'churn_predictions';
+    $wpdb->insert($table, [
+        'user_id'    => $user_id,
+        'order_id'   => $order_id,
+        'prediction' => intval($body['churn_prediction']),
+        'probability'=> floatval($body['churn_probability']),
+    ]);
+});
+
+#Model Analysis
+
+// --------------------
+// Add submenu in WP Admin
+// --------------------
+add_action('admin_menu', function() {
+    add_menu_page(
+        'Model Analysis',
+        'Model Analysis',
+        'manage_options',
+        'model-analysis',
+        'render_model_analysis_page',
+        'dashicons-chart-bar',
+        20
+    );
+});
+
+function render_model_analysis_page() {
+    ?>
+    <div class="wrap">
+        <h1>Model Analysis</h1>
+
+        <!-- Filters -->
+        <div style="margin: 15px 0;">
+            <input type="text" id="searchInput" placeholder="Search profile..." />
+            <select id="clusterFilter">
+                <option value="">All Clusters</option>
+                <option value="High Spenders">High Spenders</option>
+                <option value="Budget-Conscious">Budget-Conscious</option>
+                <option value="Trend Seekers">Trend Seekers</option>
+                <option value="Loyal Mid-Lifers">Loyal Mid-Lifers</option>
+            </select>
+            <button onclick="loadSegmentationData()">Apply</button>
+        </div>
+
+        <!-- Chart -->
+        <canvas id="clusterChart" style="max-width:600px;"></canvas>
+
+        <!-- Table -->
+        <table id="dataTable" class="widefat striped" style="margin-top:20px;">
+            <thead>
+                <tr>
+                    <th>Cluster</th>
+                    <th>Profile</th>
+                    <th>Avg Purchases</th>
+                    <th>Avg Spending</th>
+                    <th>Avg Recency</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <!-- Add Test Customer Form -->
+        <h2 style="margin-top:30px;">Add Test Customer</h2>
+        <form id="addCustomerForm" style="margin-bottom:20px;">
+            <input type="number" name="Purchases" placeholder="Purchases" required>
+            <input type="number" name="Spending" placeholder="Spending" required>
+            <input type="number" name="Recency" placeholder="Recency" required>
+            <input type="number" name="Response" placeholder="Response (0/1)" required>
+            <input type="number" name="Has_Children" placeholder="Has Children (0/1)" required>
+            <input type="number" name="AgeGroup" placeholder="Age Group (1/2/3)" required>
+            <button type="submit">Add Customer</button>
+        </form>
+
+        <!-- Added Customers Table -->
+        <h3>Added Customers</h3>
+        <table id="addedCustomersTable" class="widefat striped">
+            <thead>
+                <tr>
+                    <th>Cluster</th>
+                    <th>Profile</th>
+                    <th>Purchases</th>
+                    <th>Spending</th>
+                    <th>Recency</th>
+                    <th>Response</th>
+                    <th>Has Children</th>
+                    <th>Age Group</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+    let clustersData = [];
+
+    async function loadSegmentationData() {
+        let search = document.getElementById("searchInput").value.toLowerCase();
+        let filter = document.getElementById("clusterFilter").value;
+
+        const res = await fetch("http://127.0.0.1:5000/segmentation/insights");
+        const data = await res.json();
+
+        clustersData = data.clusters;
+
+        // Apply search + filter
+        let clusters = clustersData.filter(c => {
+            let matchSearch = !search || c.profile.toLowerCase().includes(search);
+            let matchCluster = !filter || c.cluster_label === filter;
+            return matchSearch && matchCluster;
+        });
+
+        // Fill table
+        let tbody = document.querySelector("#dataTable tbody");
+        tbody.innerHTML = "";
+        clusters.forEach(c => {
+            tbody.innerHTML += `
+                <tr>
+                    <td>${c.cluster_label}</td>
+                    <td>${c.profile}</td>
+                    <td>${c.avg_purchases.toFixed(2)}</td>
+                    <td>${c.avg_spending.toFixed(2)}</td>
+                    <td>${c.avg_recency.toFixed(2)}</td>
+                    <td>${c.count}</td>
+                </tr>
+            `;
+        });
+
+        let ctx = document.getElementById("clusterChart").getContext("2d");
+
+        if (window.clusterChart instanceof Chart) {
+            window.clusterChart.destroy();
+        }
+
+        window.clusterChart = new Chart(ctx, {
+            type: "bar",
+            data: {
+                labels: clusters.map(c => c.profile),
+                datasets: [{
+                    label: "Customer Count",
+                    data: clusters.map(c => c.count),
+                    backgroundColor: "rgba(54, 162, 235, 0.5)",
+                    borderColor: "rgba(54, 162, 235, 1)",
+                    borderWidth: 1
+                }]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+    }
+
+    document.getElementById('addCustomerForm').addEventListener('submit', async function(e){
+        e.preventDefault();
+        const formData = new FormData(this);
+        const body = {};
+        formData.forEach((v,k)=>body[k]=parseFloat(v));
+
+        const res = await fetch('http://127.0.0.1:5000/segmentation/add_customer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        clustersData = data.clusters;
+
+        // Assuming the backend returns the assigned cluster for the new customer
+        // We'll try to find the cluster the customer belongs to based on spending/purchases/recency logic
+        // For simplicity, we take the cluster with updated count that increased by 1
+        const lastCluster = data.clusters.find(c => c.count > (clustersData.find(old => old.profile === c.profile)?.count || 0));
+
+        const tbody = document.querySelector("#addedCustomersTable tbody");
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${lastCluster ? lastCluster.cluster_label : ''}</td>
+            <td>${lastCluster ? lastCluster.profile : ''}</td>
+            <td>${body.Purchases}</td>
+            <td>${body.Spending}</td>
+            <td>${body.Recency}</td>
+            <td>${body.Response}</td>
+            <td>${body.Has_Children}</td>
+            <td>${body.AgeGroup}</td>
+        `;
+        tbody.appendChild(tr);
+
+        alert('Customer added! Total customers: ' + data.total_customers);
+        loadSegmentationData();
+        this.reset();
+    });
+
+    document.addEventListener("DOMContentLoaded", loadSegmentationData);
+    </script>
+    <?php
+}
+
